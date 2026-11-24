@@ -1,0 +1,38 @@
+=== Experiment 1: stop and restart the Room Booking Service ===
+[t=+ 0.0s] Room Booking Service STOPPED
+[t=+ 0.0s] POST /exams sent (booking service is down)
+[t=+ 3.0s] Room Booking Service restart requested
+[t=+ 4.8s] Room Booking Service is up again (answering /health)
+[t=+ 6.7s] POST /exams answered HTTP 201
+
+Scheduler log (retry lines):
+10:20:00.173 GET /bookings/exam-recover1 attempt 1/6 failed: ConnectTimeout | backoff 0.50s, will retry
+10:20:01.693 GET /bookings/exam-recover1 attempt 2/6 failed: ConnectTimeout | backoff 1.00s, will retry
+10:20:03.723 GET /bookings/exam-recover1 attempt 3/6 failed: ConnectTimeout | backoff 2.00s, will retry
+10:20:05.742 GET /bookings/exam-recover1 attempt 4/6 -> HTTP 404
+10:20:05.751 GET /rooms attempt 1/6 -> HTTP 200
+10:20:05.774 PUT /bookings/exam-recover1 attempt 1/6 -> HTTP 201
+10:20:05.774 exam recover1: booked room R40a (HTTP 201)
+10:20:05.866 GET /bookings/exam-recover1 attempt 1/6 -> HTTP 200
+10:20:05.867 exam recover1: already scheduled in R40a, returning it
+
+POST /exams -> HTTP 201 after 6.65 s, retries_used=3, room=R40a
+Bookings stored for exam 'recover1': 1
+Identical repeat -> HTTP 200; bookings stored now: 1
+
+=== Experiment 2: delay / timeout combinations (MAX_RETRIES=3, backoff base 0.5 s) ===
+| Exp | Delay (s) | Timeout (s) | HTTP Status | Response Time (ms) | Retries | Observation |
+|-----|-----------|-------------|-------------|--------------------|---------|-------------|
+| A | 0.1 | 1.0 | 201 | 420 | 0 | Booked in R40a; no retries needed |
+| B | 0.8 | 1.5 | 201 | 2567 | 0 | Booked in R40a; no retries needed |
+| C | 1.5 | 0.5 | 503 | 5645 | 3 | Gave up after 3 retries; booking was not created |
+| D | 1.5 (PUT only) | 0.5 | 503 | 5699 | 3 | Gave up after 3 retries; booking EXISTS on the server (reply was too slow) |
+
+Follow-up for D: same request, service no longer slow -> HTTP 200, bookings stored for that exam: 1
+
+Scheduler log of experiment C (timeouts and backoff):
+10:20:33.248 GET /bookings/exam-exp-C attempt 1/4 failed: ReadTimeout | backoff 0.50s, will retry
+10:20:34.277 GET /bookings/exam-exp-C attempt 2/4 failed: ReadTimeout | backoff 1.00s, will retry
+10:20:35.807 GET /bookings/exam-exp-C attempt 3/4 failed: ReadTimeout | backoff 2.00s, will retry
+10:20:38.336 GET /bookings/exam-exp-C attempt 4/4 failed: ReadTimeout | no attempts left, giving up
+10:20:38.336 exam exp-C: FAILED, GET /bookings/exam-exp-C failed after 4 attempts (ReadTimeout)
